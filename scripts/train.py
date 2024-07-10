@@ -1,4 +1,7 @@
 import os
+import re
+import glob
+import shutil
 from contextlib import nullcontext
 from copy import deepcopy
 from datetime import timedelta
@@ -40,6 +43,7 @@ def main():
     # == parse configs ==
     cfg = parse_configs(training=True)
     record_time = cfg.get("record_time", False)
+    save_total_limit = cfg.get("save_total_limit", 3)
 
     # == device and dtype ==
     assert torch.cuda.is_available(), "Training currently requires at least one GPU."
@@ -376,6 +380,20 @@ def main():
                 ckpt_every = cfg.get("ckpt_every", 0)
                 if ckpt_every > 0 and (global_step + 1) % ckpt_every == 0:
                     model_gathering(ema, ema_shape_dict)
+
+                    exp_dir_list = glob.glob(os.path.join(exp_dir, 'epoch*-global_step*'))
+                    exp_dir_list.sort(key=lambda x: int(re.search(r'global_step(\d+)', x).group(1)) if re.search(r'global_step(\d+)', x) else float('inf'))
+                    if len(exp_dir_list) + 1 > save_total_limit:
+                        checkpoint = exp_dir_list[0]
+                        if dist.get_rank() == 0:
+                            logger.info(f"Deleting older checkpoint {checkpoint} due to cfg.save_total_limit")
+                            try:
+                                shutil.rmtree(checkpoint, ignore_errors=True)
+                                logger.info(f"{checkpoint} has been deleted successfully!")
+                            except Exception as e:
+                                logger.info(
+                                    f"Could not remove checkpoint {checkpoint} after going over the `save_total_limit`. Error is: {e}")
+
                     save_dir = save(
                         booster,
                         exp_dir,

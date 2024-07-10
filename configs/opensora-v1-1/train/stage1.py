@@ -72,6 +72,7 @@ epochs = 1000
 log_every = 10
 ckpt_every = 500
 load = None
+save_total_limit = 3
 
 batch_size = None
 lr = 2e-5
